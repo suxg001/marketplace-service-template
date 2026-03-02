@@ -1,0 +1,24 @@
+{
+  "request": "GET /api/ads/library?query=fitness&advertiser=Acme&country=US&limit=3",
+  "response": {
+    "creatives": [
+      {
+        "creativeId": "cr_meta_US_9zv2p1ab",
+        "advertiser": "Acme",
+        "platform": "meta",
+        "placement": "feed",
+        "destinationUrl": "https://example-ad-landing.com/fitness?src=meta&c=US",
+        "mediaType": "video",
+        "mediaUrl": "https://cdn.example-ad-assets.com/meta/845233.mp4",
+        "cta": "Shop Now",
+        "capturedAt": "2026-03-02T12:00:00.000Z",
+        "country": "US"
+      }
+    ],
+    "summary": {
+      "total": 3,
+      "byPlatform": { "meta": 3 },
+      "byMediaType": { "video": 2, "image": 1 }
+    }
+  }
+}

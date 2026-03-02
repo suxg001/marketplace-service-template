@@ -1,0 +1,33 @@
+{
+  "name": "Mobile Ad Verification & Creative Intelligence",
+  "description": "Verify mobile ad creatives and query ad library records with normalized creative metadata.",
+  "basePath": "/api/ads",
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/verify",
+      "price": "0.02",
+      "currency": "USDC",
+      "params": ["platform", "placement", "country", "query", "limit"]
+    },
+    {
+      "method": "GET",
+      "path": "/library",
+      "price": "0.03",
+      "currency": "USDC",
+      "params": ["query", "advertiser", "country", "limit"]
+    }
+  ],
+  "outputFields": [
+    "creativeId",
+    "advertiser",
+    "platform",
+    "placement",
+    "destinationUrl",
+    "mediaType",
+    "mediaUrl",
+    "cta",
+    "capturedAt",
+    "country"
+  ]
+}

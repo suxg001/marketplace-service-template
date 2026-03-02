@@ -80,6 +80,8 @@ app.get('/health', (c) => c.json({
     '/api/airbnb/listing/:id',
     '/api/airbnb/reviews/:listing_id',
     '/api/airbnb/market-stats',
+    '/api/ads/verify',
+    '/api/ads/library',
   ],
 }));
 
@@ -95,6 +97,8 @@ app.get('/', (c) => c.json({
     { method: 'GET', path: '/api/reviews/:place_id', description: 'Fetch Google reviews by Place ID', price: '0.02 USDC' },
     { method: 'GET', path: '/api/business/:place_id', description: 'Get business details + review summary', price: '0.01 USDC' },
     { method: 'GET', path: '/api/reviews/summary/:place_id', description: 'Get review summary stats', price: '0.005 USDC' },
+    { method: 'GET', path: '/api/ads/verify', description: 'Mobile ad creative verification + normalized metadata', price: '0.02 USDC' },
+    { method: 'GET', path: '/api/ads/library', description: 'Search ad library + summary counts', price: '0.03 USDC' },
   ],
   pricing: {
     amount: process.env.PRICE_USDC || '0.005',

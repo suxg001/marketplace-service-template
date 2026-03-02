@@ -1,0 +1,19 @@
+{
+  "request": "GET /api/ads/verify?platform=meta&placement=feed&country=US&query=saas&limit=3",
+  "response": {
+    "creatives": [
+      {
+        "creativeId": "cr_meta_US_u7x9a2kq",
+        "advertiser": "Brand K",
+        "platform": "meta",
+        "placement": "feed",
+        "destinationUrl": "https://example-ad-landing.com/saas?src=meta&c=US",
+        "mediaType": "image",
+        "mediaUrl": "https://cdn.example-ad-assets.com/meta/1523456.jpg",
+        "cta": "Learn More",
+        "capturedAt": "2026-03-02T12:00:00.000Z",
+        "country": "US"
+      }
+    ]
+  }
+}
