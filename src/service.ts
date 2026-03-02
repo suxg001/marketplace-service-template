@@ -29,6 +29,7 @@ import {
 } from './scrapers/linkedin-enrichment';
 import { getProfile, getPosts, analyzeProfile, analyzeImages, auditProfile } from './scrapers/instagram-scraper';
 import { searchReddit, getSubreddit, getTrending, getComments } from './scrapers/reddit-scraper';
+import { adProvider } from './scrapers/ad-verification';
 
 export const serviceRouter = new Hono();
 
@@ -1436,5 +1437,118 @@ serviceRouter.get('/airbnb/market-stats', async (c) => {
     });
   } catch (err: any) {
     return c.json({ error: 'Airbnb market stats failed', message: err?.message || String(err) }, 502);
+  }
+});
+
+// ─── GET /api/ads/verify + /api/ads/library (Bounty #53) ─────────────
+
+const ADS_VERIFY_PRICE = 0.02;
+const ADS_LIBRARY_PRICE = 0.03;
+
+serviceRouter.get('/ads/verify', async (c) => {
+  const walletAddress = process.env.SOLANA_WALLET_ADDRESS || '6eUdVwsPArTxwVqEARYGCh4S2qwW2zCs7jSEDRpxydnv';
+  const payment = extractPayment(c);
+
+  if (!payment) {
+    return c.json(build402Response('/api/ads/verify', 'Mobile ad creative verification endpoint with normalized metadata.', ADS_VERIFY_PRICE, walletAddress, {
+      input: {
+        platform: 'string (optional, default: meta)',
+        placement: 'string (optional, default: feed)',
+        country: 'string (optional, default: US)',
+        query: 'string (optional)',
+        limit: 'number (optional, default: 8, max: 20)',
+      },
+      output: {
+        creatives: 'AdCreative[] — creativeId, advertiser, platform, placement, destinationUrl, mediaType, mediaUrl, cta, capturedAt, country',
+      },
+    }), 402);
+  }
+
+  const verification = await verifyPayment(payment, walletAddress, ADS_VERIFY_PRICE);
+  if (!verification.valid) return c.json({ error: 'Payment verification failed', reason: verification.error }, 402);
+
+  const platform = c.req.query('platform') || 'meta';
+  const placement = c.req.query('placement') || 'feed';
+  const country = c.req.query('country') || 'US';
+  const query = c.req.query('query') || undefined;
+  const limit = Math.min(Math.max(parseInt(c.req.query('limit') || '8', 10) || 8, 1), 20);
+
+  try {
+    const proxy = getProxy();
+    const ip = await getProxyExitIp();
+    const creatives = await adProvider.verify({ platform, placement, country, query, limit });
+
+    c.header('X-Payment-Settled', 'true');
+    c.header('X-Payment-TxHash', payment.txHash);
+
+    return c.json({
+      creatives,
+      meta: {
+        provider: adProvider.name,
+        count: creatives.length,
+        proxy: { ip, country: proxy.country, type: 'mobile' },
+      },
+      payment: { txHash: payment.txHash, network: payment.network, amount: verification.amount, settled: true },
+    });
+  } catch (err: any) {
+    return c.json({ error: 'Ad verification failed', message: err?.message || String(err) }, 502);
+  }
+});
+
+serviceRouter.get('/ads/library', async (c) => {
+  const walletAddress = process.env.SOLANA_WALLET_ADDRESS || '6eUdVwsPArTxwVqEARYGCh4S2qwW2zCs7jSEDRpxydnv';
+  const payment = extractPayment(c);
+
+  if (!payment) {
+    return c.json(build402Response('/api/ads/library', 'Search ad creative library with normalized records + summary counts.', ADS_LIBRARY_PRICE, walletAddress, {
+      input: {
+        query: 'string (required)',
+        advertiser: 'string (optional)',
+        country: 'string (optional, default: US)',
+        limit: 'number (optional, default: 10, max: 50)',
+      },
+      output: {
+        creatives: 'AdCreative[] — normalized creative records',
+        summary: '{ total, byPlatform, byMediaType }',
+      },
+    }), 402);
+  }
+
+  const verification = await verifyPayment(payment, walletAddress, ADS_LIBRARY_PRICE);
+  if (!verification.valid) return c.json({ error: 'Payment verification failed', reason: verification.error }, 402);
+
+  const query = c.req.query('query');
+  if (!query) return c.json({ error: 'Missing required parameter: query' }, 400);
+
+  const advertiser = c.req.query('advertiser') || undefined;
+  const country = c.req.query('country') || 'US';
+  const limit = Math.min(Math.max(parseInt(c.req.query('limit') || '10', 10) || 10, 1), 50);
+
+  try {
+    const proxy = getProxy();
+    const ip = await getProxyExitIp();
+    const creatives = await adProvider.library({ query, advertiser, country, limit });
+
+    const summary = creatives.reduce((acc: any, item) => {
+      acc.total += 1;
+      acc.byPlatform[item.platform] = (acc.byPlatform[item.platform] || 0) + 1;
+      acc.byMediaType[item.mediaType] = (acc.byMediaType[item.mediaType] || 0) + 1;
+      return acc;
+    }, { total: 0, byPlatform: {}, byMediaType: {} });
+
+    c.header('X-Payment-Settled', 'true');
+    c.header('X-Payment-TxHash', payment.txHash);
+
+    return c.json({
+      creatives,
+      summary,
+      meta: {
+        provider: adProvider.name,
+        proxy: { ip, country: proxy.country, type: 'mobile' },
+      },
+      payment: { txHash: payment.txHash, network: payment.network, amount: verification.amount, settled: true },
+    });
+  } catch (err: any) {
+    return c.json({ error: 'Ad library fetch failed', message: err?.message || String(err) }, 502);
   }
 });
