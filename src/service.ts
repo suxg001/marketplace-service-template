@@ -29,6 +29,7 @@ import {
 } from './scrapers/linkedin-enrichment';
 import { getProfile, getPosts, analyzeProfile, analyzeImages, auditProfile } from './scrapers/instagram-scraper';
 import { searchReddit, getSubreddit, getTrending, getComments } from './scrapers/reddit-scraper';
+import { fetchPropertyByZpid, searchProperties, marketByZip, compsByZpid } from './scrapers/realestate-scraper';
 
 export const serviceRouter = new Hono();
 
@@ -1436,5 +1437,179 @@ serviceRouter.get('/airbnb/market-stats', async (c) => {
     });
   } catch (err: any) {
     return c.json({ error: 'Airbnb market stats failed', message: err?.message || String(err) }, 502);
+  }
+});
+
+// ═══════════════════════════════════════════════════════
+// ─── REAL ESTATE LISTING INTELLIGENCE API (Bounty #79)
+// ═══════════════════════════════════════════════════════
+
+const RE_PROPERTY_PRICE = 0.02;
+const RE_SEARCH_PRICE = 0.01;
+const RE_MARKET_PRICE = 0.05;
+const RE_COMPS_PRICE = 0.03;
+
+serviceRouter.get('/realestate/property/:zpid', async (c) => {
+  const walletAddress = process.env.WALLET_ADDRESS;
+  if (!walletAddress) return c.json({ error: 'Service misconfigured: WALLET_ADDRESS not set' }, 500);
+
+  const payment = extractPayment(c);
+  if (!payment) {
+    return c.json(build402Response('/api/realestate/property/:zpid', 'Zillow property details by ZPID: price, Zestimate, beds/baths, history, photos', RE_PROPERTY_PRICE, walletAddress, {
+      input: { zpid: 'string (required) — Zillow property ID in URL path' },
+      output: { property: 'RealEstateProperty', meta: '{ proxy }' },
+    }), 402);
+  }
+
+  const verification = await verifyPayment(payment, walletAddress, RE_PROPERTY_PRICE);
+  if (!verification.valid) return c.json({ error: 'Payment verification failed', reason: verification.error }, 402);
+
+  const zpid = c.req.param('zpid');
+  if (!zpid) return c.json({ error: 'Missing zpid in URL path' }, 400);
+
+  try {
+    const proxy = getProxy();
+    const ip = await getProxyExitIp();
+    const property = await fetchPropertyByZpid(zpid);
+
+    c.header('X-Payment-Settled', 'true');
+    c.header('X-Payment-TxHash', payment.txHash);
+
+    return c.json({
+      property,
+      meta: { proxy: { ip, country: proxy.country, host: proxy.host, type: 'mobile' } },
+      payment: { txHash: payment.txHash, network: payment.network, amount: verification.amount, settled: true },
+    });
+  } catch (err: any) {
+    return c.json({ error: 'Real estate property fetch failed', message: err?.message || String(err) }, 502);
+  }
+});
+
+serviceRouter.get('/realestate/search', async (c) => {
+  const walletAddress = process.env.WALLET_ADDRESS;
+  if (!walletAddress) return c.json({ error: 'Service misconfigured: WALLET_ADDRESS not set' }, 500);
+
+  const payment = extractPayment(c);
+  if (!payment) {
+    return c.json(build402Response('/api/realestate/search', 'Search real estate by address/zip/city with price + bedroom + type filters', RE_SEARCH_PRICE, walletAddress, {
+      input: {
+        address: 'string (optional)',
+        zip: 'string (optional)',
+        city: 'string (optional)',
+        type: 'string (optional) — for_sale/for_rent/sold',
+        min_price: 'number (optional)',
+        max_price: 'number (optional)',
+        beds: 'number (optional)',
+        limit: 'number (optional, default: 20, max: 50)',
+      },
+      output: { query: 'string', totalFound: 'number', results: 'PropertySearchResult[]' },
+    }), 402);
+  }
+
+  const verification = await verifyPayment(payment, walletAddress, RE_SEARCH_PRICE);
+  if (!verification.valid) return c.json({ error: 'Payment verification failed', reason: verification.error }, 402);
+
+  const address = c.req.query('address') || undefined;
+  const zip = c.req.query('zip') || undefined;
+  const city = c.req.query('city') || undefined;
+  const type = c.req.query('type') || undefined;
+  const min_price = parseInt(c.req.query('min_price') || '') || undefined;
+  const max_price = parseInt(c.req.query('max_price') || '') || undefined;
+  const beds = parseFloat(c.req.query('beds') || '') || undefined;
+  const limit = Math.min(Math.max(parseInt(c.req.query('limit') || '20') || 20, 1), 50);
+
+  if (!address && !zip && !city) {
+    return c.json({ error: 'Missing query: provide one of address, zip, or city' }, 400);
+  }
+
+  try {
+    const proxy = getProxy();
+    const ip = await getProxyExitIp();
+    const result = await searchProperties({ address, zip, city, type, min_price, max_price, beds, limit });
+
+    c.header('X-Payment-Settled', 'true');
+    c.header('X-Payment-TxHash', payment.txHash);
+
+    return c.json({
+      ...result,
+      meta: { proxy: { ip, country: proxy.country, host: proxy.host, type: 'mobile' } },
+      payment: { txHash: payment.txHash, network: payment.network, amount: verification.amount, settled: true },
+    });
+  } catch (err: any) {
+    return c.json({ error: 'Real estate search failed', message: err?.message || String(err) }, 502);
+  }
+});
+
+serviceRouter.get('/realestate/market', async (c) => {
+  const walletAddress = process.env.WALLET_ADDRESS;
+  if (!walletAddress) return c.json({ error: 'Service misconfigured: WALLET_ADDRESS not set' }, 500);
+
+  const payment = extractPayment(c);
+  if (!payment) {
+    return c.json(build402Response('/api/realestate/market', 'ZIP-level market stats: median home value, average value, inventory', RE_MARKET_PRICE, walletAddress, {
+      input: { zip: 'string (required)' },
+      output: { zip: 'string', inventory: 'number', median_home_value: 'number|null', average_home_value: 'number|null' },
+    }), 402);
+  }
+
+  const verification = await verifyPayment(payment, walletAddress, RE_MARKET_PRICE);
+  if (!verification.valid) return c.json({ error: 'Payment verification failed', reason: verification.error }, 402);
+
+  const zip = c.req.query('zip');
+  if (!zip) return c.json({ error: 'Missing required parameter: zip' }, 400);
+
+  try {
+    const proxy = getProxy();
+    const ip = await getProxyExitIp();
+    const market = await marketByZip(zip);
+
+    c.header('X-Payment-Settled', 'true');
+    c.header('X-Payment-TxHash', payment.txHash);
+
+    return c.json({
+      market,
+      meta: { proxy: { ip, country: proxy.country, host: proxy.host, type: 'mobile' } },
+      payment: { txHash: payment.txHash, network: payment.network, amount: verification.amount, settled: true },
+    });
+  } catch (err: any) {
+    return c.json({ error: 'Market report failed', message: err?.message || String(err) }, 502);
+  }
+});
+
+serviceRouter.get('/realestate/comps/:zpid', async (c) => {
+  const walletAddress = process.env.WALLET_ADDRESS;
+  if (!walletAddress) return c.json({ error: 'Service misconfigured: WALLET_ADDRESS not set' }, 500);
+
+  const payment = extractPayment(c);
+  if (!payment) {
+    return c.json(build402Response('/api/realestate/comps/:zpid', 'Comparable property sales/listings near a target ZPID', RE_COMPS_PRICE, walletAddress, {
+      input: { zpid: 'string (required) — in URL path', radius: 'string (optional, e.g. 0.5mi)' },
+      output: { zpid: 'string', radius: 'string|null', comps: 'ComparableProperty[]' },
+    }), 402);
+  }
+
+  const verification = await verifyPayment(payment, walletAddress, RE_COMPS_PRICE);
+  if (!verification.valid) return c.json({ error: 'Payment verification failed', reason: verification.error }, 402);
+
+  const zpid = c.req.param('zpid');
+  if (!zpid) return c.json({ error: 'Missing zpid in URL path' }, 400);
+
+  const radius = c.req.query('radius') || undefined;
+
+  try {
+    const proxy = getProxy();
+    const ip = await getProxyExitIp();
+    const comps = await compsByZpid(zpid, radius);
+
+    c.header('X-Payment-Settled', 'true');
+    c.header('X-Payment-TxHash', payment.txHash);
+
+    return c.json({
+      ...comps,
+      meta: { proxy: { ip, country: proxy.country, host: proxy.host, type: 'mobile' } },
+      payment: { txHash: payment.txHash, network: payment.network, amount: verification.amount, settled: true },
+    });
+  } catch (err: any) {
+    return c.json({ error: 'Comparable sales lookup failed', message: err?.message || String(err) }, 502);
   }
 });

@@ -80,6 +80,10 @@ app.get('/health', (c) => c.json({
     '/api/airbnb/listing/:id',
     '/api/airbnb/reviews/:listing_id',
     '/api/airbnb/market-stats',
+    '/api/realestate/property/:zpid',
+    '/api/realestate/search',
+    '/api/realestate/market?zip=10001',
+    '/api/realestate/comps/:zpid',
   ],
 }));
 
@@ -95,6 +99,10 @@ app.get('/', (c) => c.json({
     { method: 'GET', path: '/api/reviews/:place_id', description: 'Fetch Google reviews by Place ID', price: '0.02 USDC' },
     { method: 'GET', path: '/api/business/:place_id', description: 'Get business details + review summary', price: '0.01 USDC' },
     { method: 'GET', path: '/api/reviews/summary/:place_id', description: 'Get review summary stats', price: '0.005 USDC' },
+    { method: 'GET', path: '/api/realestate/property/:zpid', description: 'Zillow property details (price, Zestimate, history, photos)', price: '0.02 USDC' },
+    { method: 'GET', path: '/api/realestate/search', description: 'Search Zillow listings by address/ZIP/city with filters', price: '0.01 USDC' },
+    { method: 'GET', path: '/api/realestate/market?zip=10001', description: 'ZIP-level market report', price: '0.05 USDC' },
+    { method: 'GET', path: '/api/realestate/comps/:zpid', description: 'Comparable listings lookup', price: '0.03 USDC' },
   ],
   pricing: {
     amount: process.env.PRICE_USDC || '0.005',
